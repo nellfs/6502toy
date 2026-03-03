@@ -21,3 +21,19 @@ func (c *CPU) Step() {
 		fmt.Printf("unknown opcode: %02X\n", opcode)
 	}
 }
+
+// Run executes instructions until a BRK (0x00) is encountered or
+// the given maximum number of steps has been executed.
+func (c *CPU) Run(maxSteps int) {
+	for i := 0; i < maxSteps; i++ {
+		opcode := c.Mem[c.PC]
+		if opcode == 0x00 {
+			fmt.Printf("halt (BRK) at %04X\n", c.PC)
+			return
+		}
+
+		c.Step()
+	}
+
+	fmt.Printf("warning: max steps (%d) reached at PC=%04X\n", maxSteps, c.PC)
+}

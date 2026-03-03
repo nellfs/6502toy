@@ -11,11 +11,14 @@ import (
 	"github.com/nellfs/6502toy/internal/cpu"
 )
 
-func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
+const inputCodeFile = "input/code.asm"
+const binaryOutputFile = "build/program.bin"
+
+func writeCode(buff []byte) {
+	err := os.WriteFile(inputCodeFile, buff, 0644)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func main() {
@@ -27,33 +30,6 @@ func main() {
 		os.Exit(code)
 	}
 
-	// code compilation
-
-	// assemble
-	err := run("ca65", "test/minimal.asm", "-o", "build/minimal.o")
-	if err != nil {
-		panic(err)
-	}
-
-	err = run("ld65", "build/minimal.o", "-t", "none", "-o", "build/program.bin")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("compiled to program.bin")
-
-	// cpu runtime
-
-	cpu := &cpu.CPU{}
-	cpu.PC = 0x8000
-	data, err := os.ReadFile("build/program.bin")
-	if err != nil {
-		panic(err)
-	}
-	copy(cpu.Mem[0x8000:], data)
-	cpu.Step()
-
-	fmt.Printf("accumulator = %02X\n", cpu.A)
 }
 
 func activate(app *adw.Application) {
@@ -67,6 +43,35 @@ func activate(app *adw.Application) {
 	sidebarView := adw.NewToolbarView()
 	sidebarView.AddTopBar(sidebarHeaderBar)
 
+	// CPU model
+	emu := &cpu.CPU{}
+	emu.PC = 0x8000
+
+	// sidebar content: CPU registers
+	regsPage := adw.NewPreferencesPage()
+	regsPage.SetTitle("CPU")
+
+	regsGroup := adw.NewPreferencesGroup()
+	regsGroup.SetTitle("Registers")
+
+	regARow := adw.NewActionRow()
+	regARow.SetTitle("A")
+
+	regPCRow := adw.NewActionRow()
+	regPCRow.SetTitle("PC")
+
+	regsGroup.Add(regARow)
+	regsGroup.Add(regPCRow)
+	regsPage.Add(regsGroup)
+	sidebarView.SetContent(regsPage)
+
+	updateRegisters := func() {
+		regARow.SetSubtitle(fmt.Sprintf("0x%02X", emu.A))
+		regPCRow.SetSubtitle(fmt.Sprintf("0x%04X", emu.PC))
+	}
+
+	updateRegisters()
+
 	// main headerbar
 	mainHeaderBar := adw.NewHeaderBar()
 	mainHeaderBar.SetShowTitle(false)
@@ -77,24 +82,38 @@ func activate(app *adw.Application) {
 	textView.SetMarginBottom(16)
 	textView.SetMarginEnd(8)
 
+	// load existing code, if any
+	if data, err := os.ReadFile(inputCodeFile); err == nil {
+		textView.Buffer().SetText(string(data))
+	}
+
 	// main headerbar button
 	buildBtn := gtk.NewButtonFromIconName("weather-tornado-symbolic")
 	buildBtn.SetTooltipText("Build")
-	buildBtn.ConnectClicked(func() {
-		err := run("ca65", "test/minimal.asm", "-o", "build/minimal.o")
-		if err != nil {
-			panic(err)
-		}
 
-		err = run("ld65", "build/minimal.o", "-t", "none", "-o", "build/program.bin")
-		if err != nil {
-			panic(err)
-		}
+	buildBtn.ConnectClicked(func() {
+		// compile and save code snippet
+		compile(textView.Buffer())
 	})
 
 	runBtn := gtk.NewButtonFromIconName("media-playback-start-symbolic")
 	runBtn.SetTooltipText("Run")
+
 	runBtn.ConnectClicked(func() {
+		compile(textView.Buffer())
+		// cpu runtime
+		data, err := os.ReadFile(binaryOutputFile)
+		if err != nil {
+			panic(err)
+		}
+		copy(emu.Mem[0x8000:], data)
+
+		// reset CPU state and run until BRK or a safety limit
+		emu.PC = 0x8000
+		emu.A = 0
+		emu.Run(100000)
+
+		updateRegisters()
 	})
 
 	mainHeaderBar.PackStart(buildBtn)
@@ -120,4 +139,30 @@ func activate(app *adw.Application) {
 
 	win.SetContent(split)
 	win.Present()
+}
+
+func compile(textViewBuffer *gtk.TextBuffer) {
+	buff := textViewBuffer
+	start := buff.StartIter()
+	end := buff.EndIter()
+
+	text := buff.Text(start, end, true)
+	writeCode([]byte(text))
+
+	err := run("ca65", inputCodeFile, "-o", "build/object.o")
+	if err != nil {
+		panic(err)
+	}
+
+	err = run("ld65", "build/object.o", "-t", "none", "-o", binaryOutputFile)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func run(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Run()
 }
