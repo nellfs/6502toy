@@ -85,6 +85,11 @@ func activate(app *adw.Application) {
 	textView.SetMarginEnd(8)
 	textView.AddCSSClass("code-view")
 
+	editorScrolled := gtk.NewScrolledWindow()
+	editorScrolled.SetChild(textView)
+	editorScrolled.SetVExpand(true)
+	editorScrolled.SetHExpand(true)
+
 	// bottom "terminal" for logs/errors
 	logView := gtk.NewTextView()
 
@@ -93,6 +98,7 @@ func activate(app *adw.Application) {
 
 	logScrolled := gtk.NewScrolledWindow()
 	logScrolled.SetChild(logView)
+	logScrolled.SetSizeRequest(-1, 200) // minimum height for log/terminal area
 
 	// load existing code, if any
 	if data, err := os.ReadFile(inputCodeFile); err == nil {
@@ -165,12 +171,13 @@ textview, textview text {
 
 	// paned main area: editor on top, log "terminal" at the bottom
 	mainPaned := gtk.NewPaned(gtk.OrientationVertical)
-	mainPaned.SetStartChild(textView)
+	mainPaned.SetStartChild(editorScrolled)
 	mainPaned.SetEndChild(logScrolled)
 	mainPaned.SetResizeStartChild(true)
-	mainPaned.SetResizeEndChild(true)
+	mainPaned.SetResizeEndChild(false)
 	mainPaned.SetShrinkStartChild(false)
-	mainPaned.SetShrinkEndChild(true)
+	mainPaned.SetShrinkEndChild(false)
+	mainPaned.SetPosition(350)
 
 	mainView.SetContent(mainPaned)
 
