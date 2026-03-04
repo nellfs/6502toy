@@ -1,6 +1,9 @@
 package cpu
 
-import "log/slog"
+import (
+	"fmt"
+	"log/slog"
+)
 
 type CPU struct {
 	A   byte
@@ -8,7 +11,7 @@ type CPU struct {
 	Mem [65536]byte
 }
 
-func (c *CPU) Step() {
+func (c *CPU) Step() error {
 	opcode := c.Mem[c.PC]
 	c.PC++
 
@@ -18,8 +21,10 @@ func (c *CPU) Step() {
 		c.PC++
 		c.A = value
 	default:
-		slog.Error("unknown opcode", "opcode", opcode, "pc", c.PC-1)
+		slog.Error("step", "pc", fmt.Sprintf("0x%04X", c.PC), "opcode", fmt.Sprintf("0x%02X", opcode))
+		return fmt.Errorf("unknown opcode: 0x%02X", opcode)
 	}
+	return nil
 }
 
 // Run executes instructions until a BRK (0x00) is encountered or
@@ -32,7 +37,10 @@ func (c *CPU) Run(maxSteps int) {
 			return
 		}
 
-		c.Step()
+		if err := c.Step(); err != nil {
+			slog.Error("error in step", "error", err)
+			return
+		}
 	}
 
 	slog.Warn("warning: max steps reached", "maxSteps", maxSteps, "pc", c.PC)

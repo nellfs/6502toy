@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/core/glib"
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/nellfs/6502toy/internal/cpu"
@@ -178,6 +179,25 @@ textview, textview text {
 	mainPaned.SetShrinkStartChild(false)
 	mainPaned.SetShrinkEndChild(false)
 	mainPaned.SetPosition(350)
+
+	// lreserve log scroll position when resizing the paned so the text doesn’t jump
+	vadj := logScrolled.VAdjustment()
+	var savedLogScroll float64
+	var restoringLogScroll bool
+	vadj.ConnectValueChanged(func() {
+		if !restoringLogScroll {
+			savedLogScroll = vadj.Value()
+		}
+	})
+	savedLogScroll = vadj.Value()
+	mainPaned.ConnectMoveHandle(func(gtk.ScrollType) bool {
+		glib.IdleAdd(func() {
+			restoringLogScroll = true
+			vadj.SetValue(savedLogScroll)
+			restoringLogScroll = false
+		})
+		return false
+	})
 
 	mainView.SetContent(mainPaned)
 

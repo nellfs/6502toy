@@ -1,3 +1,4 @@
 .segment "CODE"
         LDA #$04
-        BRK
+	LDX #$04
+        BRK 

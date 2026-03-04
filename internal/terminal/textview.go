@@ -13,7 +13,7 @@ type TextViewWriter struct {
 
 func NewTextViewWriter(view *gtk.TextView) *TextViewWriter {
 	buffer := view.Buffer()
-	// Create one persistent mark at the end, gravity=false means it stays at end
+	// create one persistent mark at the end, gravity=false means it stays at end
 	end := buffer.EndIter()
 	endMark := buffer.CreateMark("terminal-end", end, false)
 
@@ -31,7 +31,7 @@ func (w *TextViewWriter) Write(p []byte) (int, error) {
 		w.buffer.Insert(end, text)
 		w.buffer.MoveMarkByName("terminal-end", w.buffer.EndIter())
 
-		// Second idle: scroll AFTER GTK has remeasured the new content height
+		// second idle: scroll AFTER GTK has remeasured the new content height
 		glib.IdleAdd(func() {
 			w.view.ScrollToMark(w.endMark, 0.0, true, 0.0, 1.0)
 		})
