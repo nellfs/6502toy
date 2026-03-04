@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/nellfs/6502toy/internal/cpu"
+	"github.com/nellfs/6502toy/internal/terminal"
 )
 
 const inputCodeFile = "input/code.asm"
@@ -81,6 +83,16 @@ func activate(app *adw.Application) {
 	textView.SetMarginStart(8)
 	textView.SetMarginBottom(16)
 	textView.SetMarginEnd(8)
+	textView.AddCSSClass("code-view")
+
+	// bottom "terminal" for logs/errors
+	logView := gtk.NewTextView()
+
+	logWriter := slog.New(terminal.SimpleHandler(terminal.NewTextViewWriter(logView), slog.LevelDebug))
+	slog.SetDefault(logWriter)
+
+	logScrolled := gtk.NewScrolledWindow()
+	logScrolled.SetChild(logView)
 
 	// load existing code, if any
 	if data, err := os.ReadFile(inputCodeFile); err == nil {
@@ -93,18 +105,25 @@ func activate(app *adw.Application) {
 
 	buildBtn.ConnectClicked(func() {
 		// compile and save code snippet
-		compile(textView.Buffer())
+		if err := compile(textView.Buffer()); err != nil {
+			slog.Error("build failed", "error", err)
+		}
 	})
 
 	runBtn := gtk.NewButtonFromIconName("media-playback-start-symbolic")
 	runBtn.SetTooltipText("Run")
 
 	runBtn.ConnectClicked(func() {
-		compile(textView.Buffer())
+		if err := compile(textView.Buffer()); err != nil {
+			slog.Error("build before run failed", "error", err)
+			return
+		}
+
 		// cpu runtime
 		data, err := os.ReadFile(binaryOutputFile)
 		if err != nil {
-			panic(err)
+			slog.Error("failed to read program binary", "error", err, "path", binaryOutputFile)
+			return
 		}
 		copy(emu.Mem[0x8000:], data)
 
@@ -120,7 +139,21 @@ func activate(app *adw.Application) {
 	mainHeaderBar.PackStart(runBtn)
 
 	cssProvider := gtk.NewCSSProvider()
-	cssProvider.LoadFromString("textview, textview text { background: transparent; font-size: 16px; font-family: monospace; }")
+	cssProvider.LoadFromString(`
+textview, textview text {
+	background: transparent;
+}
+
+.code-view, .code-view text {
+	font-size: 16px;
+	font-family: monospace;
+}
+
+.log-view, .log-view text {
+	font-size: 14px;
+	font-family: monospace;
+}
+`)
 	gtk.StyleContextAddProviderForDisplay(
 		textView.Display(),
 		cssProvider,
@@ -129,7 +162,17 @@ func activate(app *adw.Application) {
 
 	mainView := adw.NewToolbarView()
 	mainView.AddTopBar(mainHeaderBar)
-	mainView.SetContent(textView)
+
+	// paned main area: editor on top, log "terminal" at the bottom
+	mainPaned := gtk.NewPaned(gtk.OrientationVertical)
+	mainPaned.SetStartChild(textView)
+	mainPaned.SetEndChild(logScrolled)
+	mainPaned.SetResizeStartChild(true)
+	mainPaned.SetResizeEndChild(true)
+	mainPaned.SetShrinkStartChild(false)
+	mainPaned.SetShrinkEndChild(true)
+
+	mainView.SetContent(mainPaned)
 
 	// split view
 	split := adw.NewOverlaySplitView()
@@ -141,7 +184,7 @@ func activate(app *adw.Application) {
 	win.Present()
 }
 
-func compile(textViewBuffer *gtk.TextBuffer) {
+func compile(textViewBuffer *gtk.TextBuffer) error {
 	buff := textViewBuffer
 	start := buff.StartIter()
 	end := buff.EndIter()
@@ -151,13 +194,16 @@ func compile(textViewBuffer *gtk.TextBuffer) {
 
 	err := run("ca65", inputCodeFile, "-o", "build/object.o")
 	if err != nil {
-		panic(err)
+		slog.Error("could not assemble code", "error", err)
+		return err
 	}
 
 	err = run("ld65", "build/object.o", "-t", "none", "-o", binaryOutputFile)
 	if err != nil {
-		panic(err)
+		slog.Error("could not link object", "error", err)
+		return err
 	}
+	return nil
 }
 
 func run(name string, args ...string) error {

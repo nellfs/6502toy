@@ -1,6 +1,6 @@
 package cpu
 
-import "fmt"
+import "log/slog"
 
 type CPU struct {
 	A   byte
@@ -18,7 +18,7 @@ func (c *CPU) Step() {
 		c.PC++
 		c.A = value
 	default:
-		fmt.Printf("unknown opcode: %02X\n", opcode)
+		slog.Error("unknown opcode", "opcode", opcode, "pc", c.PC-1)
 	}
 }
 
@@ -28,12 +28,12 @@ func (c *CPU) Run(maxSteps int) {
 	for i := 0; i < maxSteps; i++ {
 		opcode := c.Mem[c.PC]
 		if opcode == 0x00 {
-			fmt.Printf("halt (BRK) at %04X\n", c.PC)
+			slog.Info("halt (BRK)", "pc", c.PC)
 			return
 		}
 
 		c.Step()
 	}
 
-	fmt.Printf("warning: max steps (%d) reached at PC=%04X\n", maxSteps, c.PC)
+	slog.Warn("warning: max steps reached", "maxSteps", maxSteps, "pc", c.PC)
 }
