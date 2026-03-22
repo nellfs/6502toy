@@ -30,7 +30,7 @@ func (c *CPU) Step() error {
 // Run executes instructions until a BRK (0x00) is encountered or
 // the given maximum number of steps has been executed.
 func (c *CPU) Run(maxSteps int) {
-	for i := 0; i < maxSteps; i++ {
+	for range maxSteps {
 		opcode := c.Mem[c.PC]
 		if opcode == 0x00 {
 			slog.Info("halt (BRK)", "pc", c.PC)
